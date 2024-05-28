@@ -167,6 +167,7 @@ class Actor : Thinker native
 	native readonly int TIDtoHate;
 	native readonly int WaterLevel;
 	native readonly double WaterDepth;
+	native int Shader;
 	native int Score;
 	native int Accuracy;
 	native int Stamina;

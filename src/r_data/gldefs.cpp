@@ -242,6 +242,7 @@ static const char *CoreKeywords[]=
    "brightmap",
    "disable_fullbright",
    "hardwareshader",
+   "namedhardwareshader",
    "detail",
    "#include",
    "material",
@@ -267,6 +268,7 @@ enum
    TAG_BRIGHTMAP,
    TAG_DISABLE_FB,
    TAG_HARDWARESHADER,
+   TAG_NAMEDHARDWARESHADER,
    TAG_DETAIL,
    TAG_INCLUDE,
    TAG_MATERIAL,
@@ -1823,6 +1825,145 @@ class GLDefsParser
 		}
 	}
 
+	//==========================================================================
+	//
+	// Parses a named shader definition
+	//
+	//==========================================================================
+
+	void ParseNamedHardwareShader()
+	{
+		bool disable_fullbright = false;
+		bool thiswad = false;
+		bool iwad = false;
+		int maplump = -1;
+		UserShaderDesc desc;
+		desc.shaderType = SHADER_Default;
+		TArray<FString> texNameList;
+		TArray<int> texNameIndex;
+		float speed = 1.f;
+
+		sc.MustGetString();
+		FName shaderName = FName(sc.String);
+
+		MaterialLayers mlay = { -1000, -1000 };
+
+		sc.MustGetToken('{');
+		while (!sc.CheckToken('}'))
+		{
+			sc.MustGetString();
+			if (sc.Compare("shader"))
+			{
+				sc.MustGetString();
+				desc.shader = sc.String;
+			}
+			else if (sc.Compare("material"))
+			{
+				sc.MustGetString();
+				static MaterialShaderIndex typeIndex[6] = { SHADER_Default, SHADER_Default, SHADER_Specular, SHADER_Specular, SHADER_PBR, SHADER_PBR };
+				static bool usesBrightmap[6] = { false, true, false, true, false, true };
+				static const char* typeName[6] = { "normal", "brightmap", "specular", "specularbrightmap", "pbr", "pbrbrightmap" };
+				bool found = false;
+				for (int i = 0; i < 6; i++)
+				{
+					if (sc.Compare(typeName[i]))
+					{
+						desc.shaderType = typeIndex[i];
+						if (usesBrightmap[i]) desc.shaderFlags |= SFlag_Brightmap;
+						found = true;
+						break;
+					}
+				}
+				if (!found)
+					sc.ScriptError("Unknown material type '%s' specified\n", sc.String);
+			}
+			else if (sc.Compare("speed"))
+			{
+				sc.MustGetFloat();
+				speed = float(sc.Float);
+			}
+			else if (sc.Compare("texture"))
+			{
+				sc.MustGetString();
+				FString textureName = sc.String;
+				for (FString& texName : texNameList)
+				{
+					if (!texName.Compare(textureName))
+					{
+						sc.ScriptError("Trying to redefine custom hardware shader texture '%s' in named-shader '%s'\n", textureName.GetChars(), shaderName);
+					}
+				}
+				sc.MustGetString();
+				bool okay = false;
+				for (size_t i = 0; i < countof(mlay.CustomShaderTextures); i++)
+				{
+					if (!mlay.CustomShaderTextures[i])
+					{
+						mlay.CustomShaderTextures[i] = TexMan.FindGameTexture(sc.String, ETextureType::Any, FTextureManager::TEXMAN_TryAny);
+						if (!mlay.CustomShaderTextures[i])
+						{
+							sc.ScriptError("Custom hardware shader texture '%s' not found in named-shader '%s'\n", sc.String, shaderName);
+						}
+
+						texNameList.Push(textureName);
+						texNameIndex.Push((int)i);
+						okay = true;
+						break;
+					}
+				}
+				if (!okay)
+				{
+					sc.ScriptError("Error: out of texture units in named-shader '%s'", shaderName);
+				}
+			}
+			else if (sc.Compare("define"))
+			{
+				sc.MustGetString();
+				FString defineName = sc.String;
+				FString defineValue = "";
+				if (sc.CheckToken('='))
+				{
+					sc.MustGetString();
+					defineValue = sc.String;
+				}
+				desc.defines.AppendFormat("#define %s %s\n", defineName.GetChars(), defineValue.GetChars());
+			}
+			else if (sc.Compare("disablealphatest"))
+			{
+				desc.disablealphatest = true;
+			}
+		}
+
+		int firstUserTexture;
+		switch (desc.shaderType)
+		{
+		default:
+		case SHADER_Default: firstUserTexture = 5; break;
+		case SHADER_Specular: firstUserTexture = 7; break;
+		case SHADER_PBR: firstUserTexture = 9; break;
+		}
+
+		for (unsigned int i = 0; i < texNameList.Size(); i++)
+		{
+			desc.defines.AppendFormat("#define %s texture%d\n", texNameList[i].GetChars(), texNameIndex[i] + firstUserTexture);
+		}
+
+		if (desc.shader.IsNotEmpty())
+		{
+			for (unsigned i = 0; i < usershaders.Size(); i++)
+			{
+				if (!usershaders[i].shader.CompareNoCase(desc.shader) &&
+					usershaders[i].shaderType == desc.shaderType &&
+					!usershaders[i].defines.Compare(desc.defines))
+				{
+					TexMan.AddNamedShader(shaderName, i + FIRST_USER_SHADER);
+					return;
+				}
+			}
+			TexMan.AddNamedShader(shaderName, usershaders.Push(desc) + FIRST_USER_SHADER);
+		}
+	}
+
 	void ParseColorization(FScanner& sc)
 	{
 		TextureManipulation tm = {};
@@ -1963,6 +2104,9 @@ public:
 				break;
 			case TAG_HARDWARESHADER:
 				ParseHardwareShader();
+				break;
+			case TAG_NAMEDHARDWARESHADER:
+				ParseNamedHardwareShader();
 				break;
 			case TAG_DETAIL:
 				ParseDetailTexture();

@@ -596,6 +596,18 @@ DEFINE_ACTION_FUNCTION(_TexMan, GetCanvas)
 	ACTION_RETURN_POINTER(GetTextureCanvas(texturename));
 }
 
+static int GetNamedShader(const FString& name)
+{
+	return TexMan.GetNamedShader(name.GetChars());
+}
+
+DEFINE_ACTION_FUNCTION_NATIVE(_TexMan, GetNamedShader, GetNamedShader)
+{
+	PARAM_PROLOGUE;
+	PARAM_STRING(name);
+	ACTION_RETURN_INT(GetNamedShader(name));
+}
+
 //=====================================================================================
 //
 // FFont exports

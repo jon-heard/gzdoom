@@ -245,6 +245,22 @@ public:
 	FTextureID mirrorTexture;
 	bool usefullnames;
 
+public:
+
+	void AddNamedShader(FName name, unsigned int index)
+	{
+		hardwareShaderNamesToIndices.Insert(name, index);
+	}
+
+	unsigned int GetNamedShader(FName name) const
+	{
+		const unsigned int* result = hardwareShaderNamesToIndices.CheckKey(name);
+		return (result ? *result : 0);
+	}
+
+private:
+
+	TMap<FName, unsigned int> hardwareShaderNamesToIndices;
 };
 
 extern FTextureManager TexMan;
